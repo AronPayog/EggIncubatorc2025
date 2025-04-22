@@ -22,10 +22,12 @@ MCUFRIEND_kbv tft;
 
 
 virtuabotixRTC timeit(23,22,24);
+
 DHT dht(DHTPIN, DHTTYPE);
+// DHT dht(0, DHT22);
 uint8_t relays[3] = {26, 28, 29};
 
-bool isHeaterOn;
+bool isHeaterOn;  
 bool isHumidOn;
 bool isMotorOn;
 float temp, humid, lasttemp, lasthumid;
@@ -47,6 +49,29 @@ int MotorRunDuration = 12000;
 int MotorDelay = 20000;
 uint32_t LastSeconds = 0;
 int UpTimeSeconds;
+
+int currHour;
+int currMinute;
+int toThisDay;
+int toThisMonth;
+int toThisYear;
+
+int operatingdays = 840;
+
+int candling[2] = {7, 14};
+int calibrationHumidAndTemp = 19;
+
+uint8_t maximumTemp = 37.5;
+uint8_t minimumTemp = 35.5;
+uint8_t maximumHumid = 55;
+uint8_t minimumHumid = 45;
+
+const int controlPin = 33;
+
+int onHour = 19;     // 7 PM
+int onMinute = 45;
+int offHour = 5;     // 5 AM
+int offMinute = 30;
 
 
 void setRelay(uint8_t relay, bool relayState){
@@ -75,7 +100,8 @@ void SetupScreen(){
     Serial.println(ID, HEX);
   }
   tft.begin(0x6814);
-  tft.setRotation(3);
+  tft.setRotation(1);
+  tft.fillScreen(BLACK);
 }
 
 void MainScreen(){
@@ -153,43 +179,43 @@ void drawString(uint16_t x,uint16_t y,uint16_t color, uint16_t textsize, String 
 }
 
 
-void updateRelayState(){
-  if(digitalRead(relays[0]) == LOW){
-    isHeaterOn = true;
-  }else{
-    isHeaterOn = false;
-  }
-  if(digitalRead(relays[1]) == LOW){
-    isMotorOn = true;
-  }else{
-    isMotorOn = false;
-  }
-  if(digitalRead(relays[2]) == HIGH){
-    isHumidOn = true;
-  }else{
-    isHumidOn = false;
-  }
+// void updateRelayState(){
+//   if(digitalRead(relays[0]) == LOW){
+//     isHeaterOn = true;
+//   }else{
+//     isHeaterOn = false;
+//   }
+//   if(digitalRead(relays[1]) == LOW){
+//     isMotorOn = true;
+//   }else{
+//     isMotorOn = false;
+//   }
+//   if(digitalRead(relays[2]) == HIGH){
+//     isHumidOn = true;
+//   }else{
+//     isHumidOn = false;
+//   }
 
-  Serial.print("( Heater ");
-  if(isHeaterOn){
-    Serial.print("On");
-  }else{
-    Serial.print("Off");
-  }
-  Serial.print(", Humid: ");
-  if(humidifierState){
-    Serial.print("On");
-  }else{
-    Serial.print("Off");
-  }
-  Serial.print(", Motor: ");
-  if(isMotorOn){
-    Serial.print("On");
-  }else{
-    Serial.print("Off");
-  }
-  Serial.print(" ) ");
-}
+//   Serial.print("( Heater ");
+//   if(isHeaterOn){
+//     Serial.print("On");
+//   }else{
+//     Serial.print("Off");
+//   }
+//   Serial.print(", Humid: ");
+//   if(humidifierState){
+//     Serial.print("On");
+//   }else{
+//     Serial.print("Off");
+//   }
+//   Serial.print(", Motor: ");
+//   if(isMotorOn){
+//     Serial.print("On");
+//   }else{
+//     Serial.print("Off");
+//   }
+//   Serial.print(" ) ");
+// }
 void testingRelays(){
   if(timeit.minutes & 3 == 0){
     setRelay(2, true);
@@ -343,15 +369,41 @@ void readTemperatureAndHumid(){
     Serial.print("( Temp: ");Serial.print(temp);
     Serial.print(" , Humid: ");Serial.print(humid);
     Serial.print(" )");
-    }
+  }
+}
+void switchSolarMode(){
+  if (isTimeInRange(currHour, currMinute, onHour, onMinute, offHour, offMinute)) {
+    digitalWrite(controlPin, HIGH);  // ON
+  } else {
+    digitalWrite(controlPin, LOW);   // OFF
+  }
+}
+
+bool isTimeInRange(int h, int m, int onH, int onM, int offH, int offM) {
+  int now = h * 60 + m;
+  int on = onH * 60 + onM;
+  int off = offH * 60 + offM;
+
+  if (on < off) {
+    return now >= on && now < off; // same day range
+  } else {
+    return now >= on || now < off; // overnight range
+  }
 }
 void Logics(){
   // testingRelays();
   MotorRotateBeta();
   // upTime();
   // printTheBeginAndEndTime();
-  readTemperatureAndHumid();
+  // readTemperatureAndHumid();
   TemperatureAndHumidityLogic();
+
+  if(timeit.dayofmonth == calibrationHumidAndTemp){
+    maximumTemp = 37.5;
+    minimumTemp = 35.5;
+    maximumHumid = 75;
+    minimumHumid = 65;
+  }
 }
 void setup(){
   Serial.begin(9600);
@@ -368,24 +420,27 @@ void setup(){
   pinMode(HumidPin, OUTPUT);
   SetupScreen();
   MainScreen();
-  // drawValues(temp, humid);
+  drawValues(temp, humid);
   timeit.updateTime();
   // timeit.setDS1302Time(0, 26, 23, 3, 12, 3, 2025);
+  // tft.fillScreen("BLUE");
+  delay(10000);
 }
 void loop(){
   UpTimeSeconds = millis();
-
   timeit.updateTime();
-  upTimeSeconds();
-  upTime();
-  printRtcTime();
-  updateRelayState();
+  currHour = timeit.hours;
+  currMinute = timeit.minutes;
+  // upTimeSeconds();
+  // upTime();
+  // printRtcTime();
+  // updateRelayState();
   Logics();
   Serial.print("\n");
 
-  destroyValues();
-  drawValues(temp, humid);
-
+  // destroyValues();
+  // drawValues(temp, humid);
   // ChangeHumidifierState();
+
   delay(1000);
 }
